@@ -22,16 +22,3 @@ image = np.asarray(image)
 results = model.predict(image)
 # print(f"==>> results: {results}")
 print(results[0].boxes)
-
-# for detection in results:
-#     print(f"==>> detection: {len(detection)}")
-#     for i in range(len(detection)):
-#         print(f"==>> detection: {detection[i]}")
-
-#     break
-#     scores = detection[5:]
-#     print(f"==>> scores: {scores}")
-#     class_id = np.argmax(scores)
-#     print(f"==>> class_id: {class_id}")
-#     confidence = scores[class_id]
-#     print(f"==>> confidence: {confidence}")
