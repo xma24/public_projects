@@ -21,4 +21,4 @@ image = np.asarray(image)
 
 results = model.predict(image)
 # print(f"==>> results: {results}")
-print(results[0].boxes)
+print(results[0].boxes.cls)
