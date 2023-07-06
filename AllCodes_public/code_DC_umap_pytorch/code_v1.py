@@ -4,8 +4,8 @@ import multiprocessing
 import os
 import sys
 import time
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import pytz
@@ -13,6 +13,7 @@ import timm
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+import torchmetrics
 import wandb
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
@@ -36,6 +37,12 @@ from umap.umap_ import find_ab_params, fuzzy_simplicial_set
 
 
 class ModelUtils(pl.LightningModule):
+    """_summary_
+
+    Args:
+        pl (_type_): _description_
+    """
+
     def __init__(self, logger=None):
         super(ModelUtils, self).__init__()
 
@@ -71,8 +78,15 @@ class ModelUtils(pl.LightningModule):
 
     @staticmethod
     def get_classification_metrics(num_classes, ignore):
-        import torchmetrics
+        """_summary_
 
+        Args:
+            num_classes (_type_): _description_
+            ignore (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         if ignore:
             pass
         else:
@@ -141,6 +155,11 @@ class ModelUtils(pl.LightningModule):
             )
 
     def configure_optimizers(self):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
         optimizer = self.get_optim()
 
         if Configs.pretrained_weights:
@@ -183,6 +202,13 @@ class ModelUtils(pl.LightningModule):
             return optimizer
 
     def different_lr(self, module_lr_dict, lr):
+        """_summary_
+
+        Args:
+            module_lr_dict (_type_): _description_
+            lr (_type_): _description_
+        """
+
         def is_key_included(module_name, n):
             return module_name in n
 
@@ -217,6 +243,14 @@ class ModelUtils(pl.LightningModule):
         return grouped_parameters
 
     def get_optim(self):
+        """_summary_
+
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            _type_: _description_
+        """
         lr = Configs.lr
 
         if Configs.pretrained_weights:
@@ -294,6 +328,14 @@ class ModelUtils(pl.LightningModule):
 
     @staticmethod
     def get_model(num_classes):
+        """_summary_
+
+        Args:
+            num_classes (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         import timm
 
         keyworlds = "resnet50"
@@ -322,6 +364,11 @@ class ModelUtils(pl.LightningModule):
 
     @staticmethod
     def get_vit_model():
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
         vit_model = ViT(
             image_size=224,
             patch_size=8,
@@ -341,6 +388,14 @@ class ModelUtils(pl.LightningModule):
 
     @staticmethod
     def get_vit_timm(num_classes):
+        """_summary_
+
+        Args:
+            num_classes (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         import timm
 
         keyworlds = "vit"
@@ -379,6 +434,14 @@ class ModelUtils(pl.LightningModule):
 
     @staticmethod
     def get_timm_model_list(keyworlds):
+        """_summary_
+
+        Args:
+            keyworlds (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         listed_models = timm.list_models("*")
         # print("==>> listed_models: ", listed_models)
         print("==>> listed_models len: ", len(listed_models))
@@ -393,27 +456,36 @@ class ModelUtils(pl.LightningModule):
 
         return selected_listed_models
 
-    @staticmethod
-    def get_clustering_encoder(data, graph):
-        model = CodeSpaceTable(
-            continuous=Configs.continuous,
-            n_points=Configs.num_samples,
-            dim=Configs.dim,
-        ).cuda()
+    # @staticmethod
+    # def get_clustering_encoder(data, graph):
+    #     """_summary_
 
-        init_embedding = ModelUtils.init_embedding_from_graph(
-            data.numpy(),
-            graph,
-            Configs.dim,
-            random_state=None,
-            metric="euclidean",
-            _metric_kwds={},
-            init="spectral",
-        )
+    #     Args:
+    #         data (_type_): _description_
+    #         graph (_type_): _description_
 
-        model.code_space.data = torch.from_numpy(init_embedding).cuda()
+    #     Returns:
+    #         _type_: _description_
+    #     """
+    #     model = CodeSpaceTable(
+    #         continuous=Configs.continuous,
+    #         n_points=Configs.num_samples,
+    #         dim=Configs.dim,
+    #     ).cuda()
 
-        return model
+    #     init_embedding = ModelUtils.init_embedding_from_graph(
+    #         data.numpy(),
+    #         graph,
+    #         Configs.dim,
+    #         random_state=None,
+    #         metric="euclidean",
+    #         _metric_kwds={},
+    #         init="spectral",
+    #     )
+
+    #     model.code_space.data = torch.from_numpy(init_embedding).cuda()
+
+    #     return model
 
     @staticmethod
     def check_weights_loading(to_test_model):
@@ -570,21 +642,6 @@ class ModelUtils(pl.LightningModule):
         sampled_edges_from = edges_from_exp[sampled_indices]
 
         return sampled_edges_to, sampled_edges_from
-
-
-# class CodeSpaceTable(torch.nn.Module):
-#     def __init__(self, continuous, n_points, dim):
-#         super(CodeSpaceTable, self).__init__()
-#         self.continuous = continuous
-#         self.code_space = torch.nn.Parameter(torch.randn(n_points, dim) * 0.1)
-
-#     def forward(
-#         self,
-#     ):
-#         if self.continuous:
-#             return self.code_space
-#         else:
-#             return torch.nn.functional.log_softmax(self.code_space, 1)
 
 
 class Encoder(nn.Module):
@@ -842,42 +899,6 @@ class Models(ModelUtils):
                 plt.close(fig)
 
         return {"loss": losses["loss"]}
-
-    # def training_epoch_end(self, outputs):
-    #     cwd = os.getcwd()
-    #     print("==>> Expriment Folder: ", cwd)
-
-    #     embeddings = self.model.code_space.data.cpu().numpy()
-
-    #     fig, ax = plt.subplots(figsize=(11.7, 8.27))
-    #     plt.scatter(
-    #         embeddings[:, 0],
-    #         embeddings[:, 1],
-    #         c=self.labels_numpy,
-    #         s=5,
-    #         cmap="tab10",
-    #     )
-    #     plt.savefig("./work_dirs/figure_cifar10_umap_pytorch.png")
-    #     plt.close(fig)
-
-    # train_accuracy = self.train_accuracy.compute()
-
-    # """>>> If self.ignore is used, the last clss is fake and will not calculated in the metric; """
-    # if self.ignore:
-    #     train_accuracy_mean = torch.mean(train_accuracy[:-1]).item()
-    # else:
-    #     train_accuracy_mean = torch.mean(train_accuracy).item()
-
-    # self.log(
-    #     "train_accuracy_epoch",
-    #     train_accuracy_mean,
-    #     batch_size=Configs.batch_size,
-    #     **self.log_config_epoch,
-    # )
-
-    # self.train_accuracy.reset()
-    # self.train_precision.reset()
-    # self.train_recall.reset()
 
     # def validation_step(self, batch, batch_idx):
     #     images, gt_labels = batch
