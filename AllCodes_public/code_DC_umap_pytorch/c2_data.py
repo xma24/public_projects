@@ -608,7 +608,7 @@ class Data:
                 metric=Configs.umap_metric,
                 random_state=Configs.umap_random_state,
             )
-            umap_edge_dataset = UMAPDataset(images_torch, graph, n_epochs=10)
+            umap_edge_dataset = UMAPDataset(images_all_torch, graph, n_epochs=10)
 
             # sampling_pool = np.arange(len(umap_edge_dataset))
             # np.random.shuffle(sampling_pool)

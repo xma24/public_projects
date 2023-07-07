@@ -704,7 +704,7 @@ class Models(ModelUtils):
         ModelUtils (_type_): _description_
     """
 
-    def __init__(self, images_torch, labels_torch, logger=None):
+    def __init__(self, logger=None):
         super(Models, self).__init__()
 
         self.module_lr_dict = dict(placeholder=0.0)
@@ -712,25 +712,27 @@ class Models(ModelUtils):
         self.val_embeddings_list = []
         self.val_lables_list = []
 
-        # (
-        #     init_model,
-        #     backbone,
-        #     init_classifier,
-        #     classifier,
-        # ) = ModelUtils.get_resnet18_timm(num_classes=Configs.umap_n_components)
+        """ +++ use resnet18."""
+        (
+            init_model,
+            backbone,
+            init_classifier,
+            classifier,
+        ) = ModelUtils.get_resnet18_timm(num_classes=Configs.umap_n_components)
 
-        # self.model = nn.Sequential()
-        # self.model.add_module("backbone", backbone)
-        # self.model.add_module("classifier", classifier)
+        self.model = nn.Sequential()
+        self.model.add_module("backbone", backbone)
+        self.model.add_module("classifier", classifier)
 
-        self.images_torch = images_torch
-        self.labels_torch = labels_torch
+        # self.images_torch = images_torch
+        # self.labels_torch = labels_torch
 
         # self.model_dino = torch.hub.load(
         #     "facebookresearch/dino:main", "dino_vits16"
         # ).to(self.device)
 
-        self.model = ModelUtils.get_mlp(num_classes=Configs.umap_n_components)
+        """ +++ use mlp."""
+        # self.model = ModelUtils.get_mlp(num_classes=Configs.umap_n_components)
 
         self.logsigmoid = torch.nn.LogSigmoid()
 
@@ -819,75 +821,75 @@ class Models(ModelUtils):
             **self.log_config_step,
         )
 
+        # save_folder = os.path.join(
+        #     "./work_dirs",
+        #     str(Configs.expr_index) + "_lr_" + str(Configs.lr),
+        # )
+        # os.makedirs(save_folder, exist_ok=True)
+        # if batch_idx % 500 == 0:
+        #     # print(f"==>> i: {i}")
+        #     # print("Ploting the figure")
+        #     fig, ax = plt.subplots(figsize=(11.7, 8.27))
+        #     with torch.no_grad():
+        #         # X_code = self.model.code_space.detach().cpu().numpy()
+        #         X_code = self.model(self.images_torch.to(self.device)).cpu().numpy()
+        #         plt.scatter(
+        #             X_code[:, 0],
+        #             X_code[:, 1],
+        #             c=self.labels_torch.cpu().numpy(),
+        #             s=5,
+        #             cmap="tab10",
+        #         )
+        #         plt.savefig(
+        #             os.path.join(
+        #                 save_folder,
+        #                 "figure_e"
+        #                 + str(self.current_epoch)
+        #                 + "_bs_"
+        #                 + str(batch_idx)
+        #                 + ".jpg",
+        #             )
+        #         )
+        #         plt.close(fig)
+
+        return {"loss": losses["loss"]}
+
+    def validation_step(self, batch, batch_idx):
+        if batch_idx == 0:
+            self.val_embeddings_list = []
+            self.val_lables_list = []
+        images, gt_labels = batch
+        print(f"==>> batch_idx: {batch_idx}, images: {images.shape}")
+
+        # embeddings_dino = self.model_dino(images)
+        embedings = self.forward(images)
+        print(f"==>> embedings.shape: {embedings.shape}")
+
+        self.val_embeddings_list.extend(embedings)
+        self.val_lables_list.extend(gt_labels)
+
+    def validation_epoch_end(self, outputs):
+        """_summary_
+
+        Args:
+            outputs (_type_): _description_
+        """
         save_folder = os.path.join(
             "./work_dirs",
             str(Configs.expr_index) + "_lr_" + str(Configs.lr),
         )
         os.makedirs(save_folder, exist_ok=True)
-        if batch_idx % 500 == 0:
-            # print(f"==>> i: {i}")
-            # print("Ploting the figure")
-            fig, ax = plt.subplots(figsize=(11.7, 8.27))
-            with torch.no_grad():
-                # X_code = self.model.code_space.detach().cpu().numpy()
-                X_code = self.model(self.images_torch.to(self.device)).cpu().numpy()
-                plt.scatter(
-                    X_code[:, 0],
-                    X_code[:, 1],
-                    c=self.labels_torch.cpu().numpy(),
-                    s=5,
-                    cmap="tab10",
-                )
-                plt.savefig(
-                    os.path.join(
-                        save_folder,
-                        "figure_e"
-                        + str(self.current_epoch)
-                        + "_bs_"
-                        + str(batch_idx)
-                        + ".jpg",
-                    )
-                )
-                plt.close(fig)
 
-        return {"loss": losses["loss"]}
+        fig, _ = plt.subplots(figsize=(11.7, 8.27))
+        with torch.no_grad():
+            # X_code = self.model.code_space.detach().cpu().numpy()
 
-    # def validation_step(self, batch, batch_idx):
-    #     if batch_idx == 0:
-    #         self.val_embeddings_list = []
-    #         self.val_lables_list = []
-    #     images, gt_labels = batch
-    #     print(f"==>> batch_idx: {batch_idx}, images: {images.shape}")
-
-    #     embeddings_dino = self.model_dino(images)
-    #     embedings = self.forward(embeddings_dino)
-    #     print(f"==>> embedings.shape: {embedings.shape}")
-
-    #     self.val_embeddings_list.extend(embedings)
-    #     self.val_lables_list.extend(gt_labels)
-
-    # def validation_epoch_end(self, outputs):
-    #     """_summary_
-
-    #     Args:
-    #         outputs (_type_): _description_
-    #     """
-    #     save_folder = os.path.join(
-    #         "./work_dirs",
-    #         str(Configs.expr_index) + "_lr_" + str(Configs.lr),
-    #     )
-    #     os.makedirs(save_folder, exist_ok=True)
-
-    #     fig, _ = plt.subplots(figsize=(11.7, 8.27))
-    #     with torch.no_grad():
-    #         # X_code = self.model.code_space.detach().cpu().numpy()
-
-    #         X_code = torch.stack(self.val_embeddings_list).cpu().numpy()
-    #         print(f"==>> X_code.shape: {X_code.shape}")
-    #         labels = torch.stack(self.val_lables_list).cpu().numpy()
-    #         print(f"==>> labels.shape: {labels.shape}")
-    #         plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
-    #         plt.savefig(
-    #             os.path.join(save_folder, "figure_" + str(self.current_epoch) + ".png")
-    #         )
-    #         plt.close(fig)
+            X_code = torch.stack(self.val_embeddings_list).cpu().numpy()
+            print(f"==>> X_code.shape: {X_code.shape}")
+            labels = torch.stack(self.val_lables_list).cpu().numpy()
+            print(f"==>> labels.shape: {labels.shape}")
+            plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
+            plt.savefig(
+                os.path.join(save_folder, "figure_" + str(self.current_epoch) + ".png")
+            )
+            plt.close(fig)
