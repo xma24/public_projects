@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import sys
 import time
+import random
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -433,6 +434,53 @@ class ModelUtils(pl.LightningModule):
         return init_model, backbone, init_classifier, classifier
 
     @staticmethod
+    def get_resnet18_timm(num_classes):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
+        import timm
+
+        # keyworlds = "resnet"
+        # selected_listed_models = ModelUtils.get_timm_model_list(keyworlds)
+        # print(f"==>> selected_listed_models: {selected_listed_models}")
+
+        # import sys
+
+        # sys.exit()
+
+        model_name = "resnet18"  # "vit_small_patch32_224", "resnet18"
+        init_model = timm.create_model(model_name, pretrained=False)
+        feature_dim = init_model.get_classifier().in_features
+
+        backbone = nn.Sequential()
+        init_classifier = nn.Sequential()
+        named_modules_list = list(init_model.named_children())
+
+        # print("\n timm module list: ")
+        # module_name_list = [name for name, _ in named_modules_list]
+        # print(f"==>> module_name_list: {module_name_list} \n")
+
+        # for name, moudule in named_modules_list:
+        #     print(f"==>> name: {name}, moudule: {moudule}")
+        # print("\n ")
+
+        for i, (name, module) in enumerate(init_model.named_children()):
+            if i >= len(named_modules_list) - 1:
+                init_classifier.add_module(name, module)
+                # break
+            else:
+                backbone.add_module(name, module)
+
+        if num_classes == 1000:
+            classifier = init_classifier
+        else:
+            classifier = nn.Linear(feature_dim, num_classes)
+
+        return init_model, backbone, init_classifier, classifier
+
+    @staticmethod
     def get_timm_model_list(keyworlds):
         """_summary_
 
@@ -644,26 +692,14 @@ class ModelUtils(pl.LightningModule):
         return sampled_edges_to, sampled_edges_from
 
 
-class Encoder(nn.Module):
-    def __init__(self, dims, n_components=2):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(np.product(dims), 200),
-            nn.ReLU(),
-            nn.Linear(200, 200),
-            nn.ReLU(),
-            nn.Linear(200, 200),
-            nn.ReLU(),
-            nn.Linear(200, n_components),
-        )
-
-    def forward(self, X):
-        return self.encoder(X)
-
-
 class Models(ModelUtils):
-    def __init__(self, data_torch, labels_torch, logger=None):
+    """_summary_
+
+    Args:
+        ModelUtils (_type_): _description_
+    """
+
+    def __init__(self, logger=None):
         super(Models, self).__init__()
 
         self.module_lr_dict = dict(placeholder=0.0)
@@ -693,6 +729,9 @@ class Models(ModelUtils):
         #     Configs.num_classes
         # )
 
+        self.val_embeddings_list = []
+        self.val_lables_list = []
+
         # self.mean_module = MeanModule()
         # self.model = nn.Sequential()
         # self.model.add_module("backbone", backbone)
@@ -705,9 +744,9 @@ class Models(ModelUtils):
         # self.loss = nn.CrossEntropyLoss()
 
         # self.data_numpy = data_torch
-        self.data_torch = data_torch.to(self.device)
-        print(f"==>> self.data_torch.shape: {self.data_torch.shape}")
-        self.labels_numpy = labels_torch.cpu().numpy()
+        # self.data_torch = data_torch.to(self.device)
+        # print(f"==>> self.data_torch.shape: {self.data_torch.shape}")
+        # self.labels_numpy = labels_torch.cpu().numpy()
 
         # self.model = CodeSpaceTable(
         #     continuous=Configs.continuous,
@@ -715,7 +754,19 @@ class Models(ModelUtils):
         #     dim=Configs.dim,
         # )
 
-        self.model = Encoder(dims=self.data_torch.shape[1:]).to(self.device)
+        # self.model = Encoder(dims=self.data_torch.shape[1:]).to(self.device)
+
+        (
+            init_model,
+            backbone,
+            init_classifier,
+            classifier,
+        ) = ModelUtils.get_resnet18_timm(num_classes=Configs.umap_n_components)
+
+        self.model = nn.Sequential()
+        self.model.add_module("backbone", backbone)
+        self.model.add_module("classifier", classifier)
+        # model = model.to(Configs.device)
 
         # self.init_embedding = Models.init_embedding_from_graph(
         #     self.data_torch.cpu().numpy(),
@@ -732,104 +783,117 @@ class Models(ModelUtils):
         self.batch_size = Configs.batch_size
         self.save_hyperparameters()
 
-    @staticmethod
-    def init_embedding_from_graph(
-        _raw_data,
-        graph,
-        n_components,
-        random_state,
-        metric,
-        _metric_kwds,
-        init="spectral",
-    ):
-        """Initialize embedding using graph. This is for direct embeddings.
+    # @staticmethod
+    # def init_embedding_from_graph(
+    #     _raw_data,
+    #     graph,
+    #     n_components,
+    #     random_state,
+    #     metric,
+    #     _metric_kwds,
+    #     init="spectral",
+    # ):
+    #     """Initialize embedding using graph. This is for direct embeddings.
 
-        Parameters
-        ----------
-        init : str, optional
-            Type of initialization to use. Either random, or spectral, by default "spectral"
+    #     Parameters
+    #     ----------
+    #     init : str, optional
+    #         Type of initialization to use. Either random, or spectral, by default "spectral"
 
-        Returns
-        -------
-        embedding : np.array
-            the initialized embedding
+    #     Returns
+    #     -------
+    #     embedding : np.array
+    #         the initialized embedding
+    #     """
+
+    #     if random_state is None:
+    #         random_state = check_random_state(None)
+
+    #     if isinstance(init, str) and init == "random":
+    #         embedding = random_state.uniform(
+    #             low=-10.0, high=10.0, size=(graph.shape[0], n_components)
+    #         ).astype(np.float32)
+    #     elif isinstance(init, str) and init == "spectral":
+    #         # We add a little noise to avoid local minima for optimization to come
+
+    #         initialisation = spectral_layout(
+    #             _raw_data,
+    #             graph,
+    #             n_components,
+    #             random_state,
+    #             metric=metric,
+    #             metric_kwds=_metric_kwds,
+    #         )
+    #         expansion = 10.0 / np.abs(initialisation).max()
+    #         embedding = (initialisation * expansion).astype(
+    #             np.float32
+    #         ) + random_state.normal(
+    #             scale=0.0001, size=[graph.shape[0], n_components]
+    #         ).astype(
+    #             np.float32
+    #         )
+
+    #     else:
+    #         init_data = np.array(init)
+    #         if len(init_data.shape) == 2:
+    #             if np.unique(init_data, axis=0).shape[0] < init_data.shape[0]:
+    #                 tree = KDTree(init_data)
+    #                 dist, ind = tree.query(init_data, k=2)
+    #                 nndist = np.mean(dist[:, 1])
+    #                 embedding = init_data + random_state.normal(
+    #                     scale=0.001 * nndist, size=init_data.shape
+    #                 ).astype(np.float32)
+    #             else:
+    #                 embedding = init_data
+
+    #     return embedding
+
+    # @staticmethod
+    # def random_sampled_embedding_pairs(edges_to_exp, edges_from_exp):
+    #     """_summary_
+
+    #     Args:
+    #         edges_to_exp (_type_): _description_
+    #         edges_from_exp (_type_): _description_
+
+    #     Returns:
+    #         _type_: _description_
+    #     """
+
+    #     indices = list(np.arange(edges_to_exp.shape[0]))
+    #     sampled_indices = random.sample(indices, Configs.batch_size)
+    #     sampled_edges_to = edges_to_exp[sampled_indices]
+    #     sampled_edges_from = edges_from_exp[sampled_indices]
+
+    #     return sampled_edges_to, sampled_edges_from
+
+    def forward(self, images):
+        """_summary_
+
+        Args:
+            images (_type_): _description_
+
+        Returns:
+            _type_: _description_
         """
-
-        if random_state is None:
-            random_state = check_random_state(None)
-
-        if isinstance(init, str) and init == "random":
-            embedding = random_state.uniform(
-                low=-10.0, high=10.0, size=(graph.shape[0], n_components)
-            ).astype(np.float32)
-        elif isinstance(init, str) and init == "spectral":
-            # We add a little noise to avoid local minima for optimization to come
-
-            initialisation = spectral_layout(
-                _raw_data,
-                graph,
-                n_components,
-                random_state,
-                metric=metric,
-                metric_kwds=_metric_kwds,
-            )
-            expansion = 10.0 / np.abs(initialisation).max()
-            embedding = (initialisation * expansion).astype(
-                np.float32
-            ) + random_state.normal(
-                scale=0.0001, size=[graph.shape[0], n_components]
-            ).astype(
-                np.float32
-            )
-
-        else:
-            init_data = np.array(init)
-            if len(init_data.shape) == 2:
-                if np.unique(init_data, axis=0).shape[0] < init_data.shape[0]:
-                    tree = KDTree(init_data)
-                    dist, ind = tree.query(init_data, k=2)
-                    nndist = np.mean(dist[:, 1])
-                    embedding = init_data + random_state.normal(
-                        scale=0.001 * nndist, size=init_data.shape
-                    ).astype(np.float32)
-                else:
-                    embedding = init_data
-
-        return embedding
-
-    @staticmethod
-    def random_sampled_embedding_pairs(edges_to_exp, edges_from_exp):
-        import random
-
-        indices = list(np.arange(edges_to_exp.shape[0]))
-        sampled_indices = random.sample(indices, Configs.batch_size)
-        sampled_edges_to = edges_to_exp[sampled_indices]
-        sampled_edges_from = edges_from_exp[sampled_indices]
-
-        return sampled_edges_to, sampled_edges_from
-
-    # def forward(self, edges_to_exp, edges_from_exp, labels=None, epoch=None, batch_idx=None):
-    #     # output = self.model(images)
-
-    #     return output
+        embeddings = self.model(images)
+        return embeddings
 
     def training_step(self, batch, batch_idx):
+        """_summary_
+
+        Args:
+            batch (_type_): _description_
+            batch_idx (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
         self.lr_logging()
 
-        # images, gt_labels = batch
-
-        # model_outputs = self.forward(images)
-        # train_loss = self.loss(model_outputs, gt_labels)
-
-        # # train_loss = train_losses_dict["loss"]
-
         edge_to_exp_with_data, edge_from_exp_with_data = batch
-
         edge_to_exp_embeddings = self.model(edge_to_exp_with_data)
         edge_from_exp_embeddings = self.model(edge_from_exp_with_data)
-
-        # embedding_to_batch = embeddings[edge_to_exp]
-        # embedding_from_batch = embeddings[edge_from_exp]
         embedding_neg_to = torch.repeat_interleave(
             edge_to_exp_embeddings, Configs.negative_sample_rate, axis=0
         )
@@ -872,115 +936,77 @@ class Models(ModelUtils):
         losses = {"loss": train_loss}
 
         self.log(
+            "val_loss",
+            train_loss,
+            batch_size=Configs.batch_size,
+            **self.log_config_step,
+        )
+
+        self.log(
             "train_loss",
             train_loss,
             batch_size=Configs.batch_size,
             **self.log_config_step,
         )
 
+        # save_folder = os.path.join(
+        #     "./work_dirs",
+        #     str(Configs.expr_index) + "_lr_" + str(Configs.lr),
+        # )
+        # os.makedirs(save_folder, exist_ok=True)
+        # if batch_idx % 250 == 0:
+        #     # print(f"==>> i: {i}")
+        #     # print("Ploting the figure")
+        #     fig, ax = plt.subplots(figsize=(11.7, 8.27))
+        #     with torch.no_grad():
+        #         # X_code = self.model.code_space.detach().cpu().numpy()
+        #         X_code = self.model(self.data_torch.to(self.device)).cpu().numpy()
+        #         plt.scatter(
+        #             X_code[:, 0], X_code[:, 1], c=self.labels_numpy, s=5, cmap="tab10"
+        #         )
+        #         plt.savefig(
+        #             os.path.join(save_folder, "figure_" + str(batch_idx) + ".png")
+        #         )
+        #         plt.close(fig)
+
+        return {"loss": losses["loss"]}
+
+    def validation_step(self, batch, batch_idx):
+        if batch_idx == 0:
+            self.val_embeddings_list = []
+            self.val_lables_list = []
+        images, gt_labels = batch
+        print(f"==>> batch_idx: {batch_idx}, images: {images.shape}")
+
+        embedings = self.forward(images)
+
+        self.val_embeddings_list.extend(embedings)
+        self.val_lables_list.extend(gt_labels)
+
+    def validation_epoch_end(self, outputs):
+        """_summary_
+
+        Args:
+            outputs (_type_): _description_
+        """
         save_folder = os.path.join(
             "./work_dirs",
             str(Configs.expr_index) + "_lr_" + str(Configs.lr),
         )
         os.makedirs(save_folder, exist_ok=True)
-        if batch_idx % 250 == 0:
-            # print(f"==>> i: {i}")
-            # print("Ploting the figure")
-            fig, ax = plt.subplots(figsize=(11.7, 8.27))
-            with torch.no_grad():
-                # X_code = self.model.code_space.detach().cpu().numpy()
-                X_code = self.model(self.data_torch.to(self.device)).cpu().numpy()
-                plt.scatter(
-                    X_code[:, 0], X_code[:, 1], c=self.labels_numpy, s=5, cmap="tab10"
-                )
-                plt.savefig(
-                    os.path.join(save_folder, "figure_" + str(batch_idx) + ".png")
-                )
-                plt.close(fig)
 
-        return {"loss": losses["loss"]}
-
-    # def validation_step(self, batch, batch_idx):
-    #     images, gt_labels = batch
-
-    #     model_outputs = self.forward(images)
-    #     val_loss = self.loss(model_outputs, gt_labels)
-    #     # val_loss = val_losses_dict["loss"]
-
-    #     model_predictions = model_outputs.argmax(dim=1)
-
-    #     self.val_accuracy.update(model_predictions, gt_labels)
-    #     self.val_precision.update(model_predictions, gt_labels)
-    #     self.val_recall.update(model_predictions, gt_labels)
-
-    #     self.log(
-    #         "val_loss",
-    #         val_loss,
-    #         batch_size=Configs.batch_size * self.val_scales,
-    #         **self.log_config_step,
-    #     )
-
-    #     return val_loss
-
-    # def validation_epoch_end(self, outputs):
-    #     """>>> The compute() function will return a list;"""
-    #     val_epoch_accuracy = self.val_accuracy.compute()
-    #     val_epoch_precision = self.val_precision.compute()
-    #     val_epoch_recall = self.val_recall.compute()
-
-    #     if self.ignore:
-    #         val_epoch_accuracy_mean = torch.mean(val_epoch_accuracy[:-1].item())
-    #         val_epoch_precision_mean = torch.mean(val_epoch_precision[:-1]).item()
-    #         val_epoch_recall_mean = torch.mean(val_epoch_recall[:-1]).item()
-    #     else:
-    #         val_epoch_accuracy_mean = torch.mean(val_epoch_accuracy).item()
-    #         val_epoch_precision_mean = torch.mean(val_epoch_precision).item()
-    #         val_epoch_recall_mean = torch.mean(val_epoch_recall).item()
-
-    #     self.log(
-    #         "val_epoch_accuracy",
-    #         val_epoch_accuracy_mean,
-    #         batch_size=Configs.batch_size * self.val_scales,
-    #         **self.log_config_epoch,
-    #     )
-
-    #     """>>> We use the "user_metric" variable to monitor the performance on val set; """
-    #     user_metric = val_epoch_accuracy_mean
-    #     self.log(
-    #         "user_metric",
-    #         user_metric,
-    #         batch_size=Configs.batch_size * self.val_scales,
-    #         **self.log_config_epoch,
-    #     )
-
-    #     """>>> Plot the results to console using only one gpu since the results on all gpus are the same; """
-    #     if self.global_rank == 0:
-    #         self.console_logger.info("epoch: {0:04d} ".format(self.current_epoch))
-
-    #         for i in range(Configs.num_classes):
-    #             if i < 20:
-    #                 self.console_logger.info(
-    #                     "{0: <15}, acc: {1:.4f} | precision: {2:.4f} | recall: {3:.4f}".format(
-    #                         Configs.classes[i],
-    #                         val_epoch_accuracy[i].item(),
-    #                         val_epoch_precision[i].item(),
-    #                         val_epoch_recall[i].item(),
-    #                     )
-    #                 )
-    #         self.console_logger.info(
-    #             "acc_mean: {0:.4f} ".format(val_epoch_accuracy_mean)
-    #         )
-
-    #         self.console_logger.info(
-    #             "precision_mean: {0:.4f} ".format(val_epoch_precision_mean)
-    #         )
-    #         self.console_logger.info(
-    #             "recall_mean: {0:.4f} ".format(val_epoch_recall_mean)
-    #         )
-
-    #     self.val_accuracy.reset()
-    #     self.val_precision.reset()
-    #     self.val_recall.reset()
+        fig, _ = plt.subplots(figsize=(11.7, 8.27))
+        with torch.no_grad():
+            # X_code = self.model.code_space.detach().cpu().numpy()
+            X_code = torch.stack(self.val_embeddings_list).cpu().numpy()
+            print(f"==>> X_code.shape: {X_code.shape}")
+            labels = torch.stack(self.val_lables_list).cpu().numpy()
+            print(f"==>> labels.shape: {labels.shape}")
+            plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
+            plt.savefig(
+                os.path.join(save_folder, "figure_" + str(self.current_epoch) + ".png")
+            )
+            plt.close(fig)
 
 
 class DataUtils:
@@ -1218,11 +1244,22 @@ class GetKNNIndex:
 
 
 class DataModule(pl.LightningDataModule):
+    """_summary_
+
+    Args:
+        pl (_type_): _description_
+    """
+
     def __init__(self):
         super(DataModule, self).__init__()
         self.batch_size = Configs.batch_size
 
     def train_dataloader(self):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
         train_loader = Data.get_dataloader(
             batch_size=self.batch_size,
             data_dir=Configs.data_dir,
@@ -1232,6 +1269,11 @@ class DataModule(pl.LightningDataModule):
         return train_loader
 
     def val_dataloader(self):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
         val_loader = Data.get_dataloader(
             batch_size=self.batch_size,
             data_dir=Configs.data_dir,
@@ -1239,6 +1281,36 @@ class DataModule(pl.LightningDataModule):
         )
 
         return val_loader
+
+
+class UMAPDataset(torch.utils.data.Dataset):
+    def __init__(self, data, graph_, n_epochs=10):
+        (
+            graph,
+            epochs_per_sample,
+            head,
+            tail,
+            weight,
+            n_vertices,
+        ) = DataUtils.get_graph_elements(graph_, n_epochs)
+
+        self.edges_to_exp, self.edges_from_exp = (
+            np.repeat(head, epochs_per_sample.astype("int")),
+            np.repeat(tail, epochs_per_sample.astype("int")),
+        )
+        shuffle_mask = np.random.permutation(np.arange(len(self.edges_to_exp)))
+        self.edges_to_exp = self.edges_to_exp[shuffle_mask].astype(np.int64)
+        self.edges_from_exp = self.edges_from_exp[shuffle_mask].astype(np.int64)
+        self.data = data
+        print(f"==>> self.data: {self.data.shape}")
+
+    def __len__(self):
+        return int(self.edges_to_exp.shape[0])
+
+    def __getitem__(self, index):
+        edges_to_exp_with_data = self.data[self.edges_to_exp[index]]
+        edges_from_exp_with_data = self.data[self.edges_from_exp[index]]
+        return (edges_to_exp_with_data, edges_from_exp_with_data)
 
 
 class Data:
@@ -1253,7 +1325,7 @@ class Data:
                 batch_size, data_dir, data_category=data_category
             )
         elif data_dir.split("/")[-1] == "umap_cifar10":
-            loader, _, _ = Data.get_umap_edge_dataloader(
+            loader = Data.get_umap_edge_dataloader(
                 batch_size, data_dir, data_category=data_category
             )
         else:
@@ -1266,6 +1338,16 @@ class Data:
 
     @staticmethod
     def get_cifar10_dataloader(batch_size, data_dir, data_category="train"):
+        """_summary_
+
+        Args:
+            batch_size (_type_): _description_
+            data_dir (_type_): _description_
+            data_category (str, optional): _description_. Defaults to "train".
+
+        Returns:
+            _type_: _description_
+        """
         import torch
         import torchvision
         import torchvision.transforms as transforms
@@ -1289,7 +1371,7 @@ class Data:
 
         dataset = torchvision.datasets.CIFAR10(
             root=data_dir,
-            train=use_training,
+            train=False,
             download=True,
             transform=transform,
         )
@@ -1313,7 +1395,7 @@ class Data:
         loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=batch_size,
-            shuffle=use_shuffle,
+            shuffle=False,
             num_workers=Configs.workers,
             pin_memory=Configs.pin_memory,
         )
@@ -1365,7 +1447,7 @@ class Data:
         return loader
 
     @staticmethod
-    def get_all_cifar10_data(resize=False):
+    def get_all_cifar10_data(resize=False, data_category="train"):
         import torch
         import torchvision
         import torchvision.transforms as transforms
@@ -1388,6 +1470,13 @@ class Data:
                 ]
             )
 
+        if data_category == "train":
+            use_training = True
+            use_shuffle = True
+        else:
+            use_training = False
+            use_shuffle = False
+
         dataset = torchvision.datasets.CIFAR10(
             root="./data/",
             train=False,
@@ -1396,76 +1485,86 @@ class Data:
         )
 
         loader = torch.utils.data.DataLoader(
-            dataset, batch_size=len(dataset), shuffle=False
+            dataset, batch_size=Configs.batch_size, shuffle=False
         )
 
-        images, labels = next(iter(loader))
+        images_all = []
+        labels_all = []
 
-        return images, labels
+        for images, labels in loader:
+            images_all.extend(images)
+            labels_all.extend(labels)
+
+        images_torch = torch.stack(images_all)
+        print(f"==>> images_torch.shape: {images_torch.shape}")
+        labels_torch = torch.stack(labels_all)
+        print(f"==>> labels_torch.shape: {labels_torch.shape}")
+
+        # images, labels = next(iter(loader))
+
+        return images_torch, labels_torch
 
     @staticmethod
-    def get_umap_edge_dataloader(batch_size, data_dir, data_category="train"):
-        model = torch.hub.load("facebookresearch/dino:main", "dino_vits16")
+    def get_umap_edge_dataloader(batch_size, data_dir="./data", data_category="train"):
+        """_summary_
+
+        Args:
+            batch_size (_type_): _description_
+            data_dir (str, optional): _description_. Defaults to "./data".
+            data_category (str, optional): _description_. Defaults to "train".
+
+        Returns:
+            _type_: _description_
+        """
+
         dataloader = Data.get_cifar10_dataloader(
-            batch_size, data_dir="./data/", data_category="test"
-        )
-        out_embeddings, out_labels = GetDINOEmbedding.get_embedding_with_dinov2(
-            dataloader, model, device="cuda"
-        )
-        out_embeddings = torch.from_numpy(out_embeddings)
-        out_labels = torch.from_numpy(out_labels)
-        print(f"==>> out_embeddings.shape: {out_embeddings.shape}")
-        print(f"==>> out_labels.shape: {out_labels.shape}")
-
-        images_torch = torch.tensor(out_embeddings)
-        labels_torch = torch.tensor(out_labels)
-
-        graph = DataUtils.get_umap_graph(
-            images_torch.numpy(),
-            n_neighbors=Configs.umap_n_neighbors,
-            metric=Configs.umap_metric,
-            random_state=Configs.umap_random_state,
-        )
-        umap_edge_dataset = UMAPDataset(out_embeddings, graph, n_epochs=10)
-
-        loader = torch.utils.data.DataLoader(
-            umap_edge_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=Configs.workers,
-            pin_memory=Configs.pin_memory,
+            batch_size, data_dir=data_dir, data_category=data_category
         )
 
-        return loader, images_torch, labels_torch
+        if data_category == "train":
+            model = torch.hub.load("facebookresearch/dino:main", "dino_vits16")
+            out_embeddings, out_labels = GetDINOEmbedding.get_embedding_with_dinov2(
+                dataloader, model, device="cuda"
+            )
+            out_embeddings = torch.from_numpy(out_embeddings)
+            out_labels = torch.from_numpy(out_labels)
+            print(f"==>> out_embeddings.shape: {out_embeddings.shape}")
+            print(f"==>> out_labels.shape: {out_labels.shape}")
 
+            images_torch = torch.tensor(out_embeddings)
+            labels_torch = torch.tensor(out_labels)
 
-class UMAPDataset(torch.utils.data.Dataset):
-    def __init__(self, data, graph_, n_epochs=10):
-        (
-            graph,
-            epochs_per_sample,
-            head,
-            tail,
-            weight,
-            n_vertices,
-        ) = DataUtils.get_graph_elements(graph_, n_epochs)
+            images_torch_raw, labels_torch_raw = Data.get_all_cifar10_data(
+                resize=True, data_category=data_category
+            )
+            print(f"==>> images_torch_raw.shape: {images_torch_raw.shape}")
 
-        self.edges_to_exp, self.edges_from_exp = (
-            np.repeat(head, epochs_per_sample.astype("int")),
-            np.repeat(tail, epochs_per_sample.astype("int")),
-        )
-        shuffle_mask = np.random.permutation(np.arange(len(self.edges_to_exp)))
-        self.edges_to_exp = self.edges_to_exp[shuffle_mask].astype(np.int64)
-        self.edges_from_exp = self.edges_from_exp[shuffle_mask].astype(np.int64)
-        self.data = torch.Tensor(data)
+            graph = DataUtils.get_umap_graph(
+                images_torch.numpy(),
+                n_neighbors=Configs.umap_n_neighbors,
+                metric=Configs.umap_metric,
+                random_state=Configs.umap_random_state,
+            )
+            umap_edge_dataset = UMAPDataset(images_torch_raw, graph, n_epochs=2)
 
-    def __len__(self):
-        return int(self.edges_to_exp.shape[0])
+            sampling_pool = np.arange(len(umap_edge_dataset))
+            np.random.shuffle(sampling_pool)
+            num_sampling = int(1.0 * len(umap_edge_dataset))
+            sublist = list(sampling_pool[:num_sampling])
+            umap_edge_dataset = torch.utils.data.Subset(umap_edge_dataset, sublist)
+            print("==>> sampled dataset: ", len(umap_edge_dataset))
 
-    def __getitem__(self, index):
-        edges_to_exp_with_data = self.data[self.edges_to_exp[index]]
-        edges_from_exp_with_data = self.data[self.edges_from_exp[index]]
-        return (edges_to_exp_with_data, edges_from_exp_with_data)
+            loader = torch.utils.data.DataLoader(
+                umap_edge_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=Configs.workers,
+                pin_memory=Configs.pin_memory,
+            )
+        else:
+            loader = dataloader
+
+        return loader
 
 
 class Utils:
@@ -1897,11 +1996,11 @@ class Configs:
 if __name__ == "__main__":
     SettingUtils.generate_folders()
 
-    loader, images_torch, labels_torch = Data.get_umap_edge_dataloader(
-        Configs.batch_size, data_dir="./data"
-    )
+    # loader, images_torch, labels_torch = Data.get_umap_edge_dataloader(
+    #     Configs.batch_size, data_dir="./data"
+    # )
 
-    model = Models(images_torch, labels_torch)
+    model = Models()
     num_gpus = Settings.gpu_setting()
     pl_trainer_for_train = Settings.pl_trainer_setting(num_gpus=num_gpus)
     data_module = Settings.data_module_setting()
