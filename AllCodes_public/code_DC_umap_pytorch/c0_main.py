@@ -9,9 +9,7 @@ from c2_data import Data
 if __name__ == "__main__":
     SettingUtils.generate_folders()
 
-    # _, images_torch, labels_torch = Data.get_umap_edge_dataloader(
-    #     Configs.batch_size, "./data", data_category="train"
-    # )
+    
 
     model = Models()
     num_gpus = Settings.gpu_setting()

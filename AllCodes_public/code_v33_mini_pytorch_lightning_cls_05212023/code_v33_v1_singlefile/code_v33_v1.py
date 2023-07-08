@@ -1,21 +1,16 @@
-import torch
-import torch.nn as nn
-import time
-import timm
-import pytorch_lightning as pl
-from torch.optim.lr_scheduler import (
-    CosineAnnealingLR,
-    StepLR,
-)
+import datetime
 import logging
-import torch.distributed as dist
 import os
 import sys
-import torch
-import datetime
+import time
+
 import numpy as np
 import pytorch_lightning as pl
 import pytz
+import timm
+import torch
+import torch.distributed as dist
+import torch.nn as nn
 import wandb
 from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks import (
@@ -26,6 +21,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from pytorch_lightning.strategies import BaguaStrategy, DDPStrategy
 from pytorch_lightning.strategies.deepspeed import DeepSpeedStrategy
+from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 
 
 class TorchModel:

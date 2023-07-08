@@ -54,7 +54,7 @@ class Configs:
     subtrain = False
     subtrain_ratio = 0.1
 
-    batch_size = 16 * 8 * 2
+    batch_size = 16 * 8 * 4
     # batch_size = Utils.get_max_batchsize(data_dir)
 
     # num_epochs = 10
@@ -78,7 +78,7 @@ class Configs:
     wandb_name = "pt-" + dataset_name + "-" + backbone_name
 
     training_mode = True
-    num_gpus = 1  # "autocount"
+    num_gpus = "autocount"
     num_nodes = 1
     precision = 16
     strategy = "ddp"

@@ -455,35 +455,35 @@ class ModelUtils(pl.LightningModule):
 
         return init_model, backbone, init_classifier, classifier
 
-    @staticmethod
-    def get_mlp(num_classes):
-        """_summary_
+    # @staticmethod
+    # def get_mlp(num_classes):
+    #     """_summary_
 
-        Args:
-            num_classes (_type_): _description_
+    #     Args:
+    #         num_classes (_type_): _description_
 
-        Returns:
-            _type_: _description_
-        """
-        fc1 = nn.Linear(384, 128)
-        fc2 = nn.Linear(128, 256)
-        fc3 = nn.Linear(256, 512)
-        fc4 = nn.Linear(512, 256)
-        fc5 = nn.Linear(256, num_classes)
-        relu = nn.ReLU()
+    #     Returns:
+    #         _type_: _description_
+    #     """
+    #     fc1 = nn.Linear(384, 128)
+    #     fc2 = nn.Linear(128, 256)
+    #     fc3 = nn.Linear(256, 512)
+    #     fc4 = nn.Linear(512, 256)
+    #     fc5 = nn.Linear(256, num_classes)
+    #     relu = nn.ReLU()
 
-        encoder = nn.Sequential()
-        encoder.add_module("fc1", fc1)
-        encoder.add_module("relu", relu)
-        encoder.add_module("fc2", fc2)
-        encoder.add_module("relu", relu)
-        encoder.add_module("fc3", fc3)
-        encoder.add_module("relu", relu)
-        encoder.add_module("fc4", fc4)
-        encoder.add_module("relu", relu)
-        encoder.add_module("fc5", fc5)
+    #     encoder = nn.Sequential()
+    #     encoder.add_module("fc1", fc1)
+    #     encoder.add_module("relu", relu)
+    #     encoder.add_module("fc2", fc2)
+    #     encoder.add_module("relu", relu)
+    #     encoder.add_module("fc3", fc3)
+    #     encoder.add_module("relu", relu)
+    #     encoder.add_module("fc4", fc4)
+    #     encoder.add_module("relu", relu)
+    #     encoder.add_module("fc5", fc5)
 
-        return encoder
+    #     return encoder
 
     @staticmethod
     def get_timm_model_list(keyworlds):
@@ -709,7 +709,7 @@ class Models(ModelUtils):
 
         self.module_lr_dict = dict(placeholder=0.0)
 
-        self.val_embeddings_list = []
+        self.val_embeddings_dict = []
         self.val_lables_list = []
 
         """ +++ use resnet18."""
@@ -723,13 +723,6 @@ class Models(ModelUtils):
         self.model = nn.Sequential()
         self.model.add_module("backbone", backbone)
         self.model.add_module("classifier", classifier)
-
-        # self.images_torch = images_torch
-        # self.labels_torch = labels_torch
-
-        # self.model_dino = torch.hub.load(
-        #     "facebookresearch/dino:main", "dino_vits16"
-        # ).to(self.device)
 
         """ +++ use mlp."""
         # self.model = ModelUtils.get_mlp(num_classes=Configs.umap_n_components)
@@ -854,42 +847,95 @@ class Models(ModelUtils):
 
         return {"loss": losses["loss"]}
 
-    def validation_step(self, batch, batch_idx):
-        if batch_idx == 0:
-            self.val_embeddings_list = []
-            self.val_lables_list = []
-        images, gt_labels = batch
-        print(f"==>> batch_idx: {batch_idx}, images: {images.shape}")
+    # def validation_step(self, batch, batch_idx):
+    #     """_summary_
 
-        # embeddings_dino = self.model_dino(images)
-        embedings = self.forward(images)
-        print(f"==>> embedings.shape: {embedings.shape}")
+    #     Args:
+    #         batch (_type_): _description_
+    #         batch_idx (_type_): _description_
+    #     """
+    #     # if batch_idx == 0:
+    #     #     self.val_embeddings_list = []
+    #     #     self.val_lables_list = []
+    #     images, labels = batch
+    #     print(f"==>> batch_idx: {batch_idx}, images: {images.shape}")
 
-        self.val_embeddings_list.extend(embedings)
-        self.val_lables_list.extend(gt_labels)
+    #     # embeddings_dino = self.model_dino(images)
+    #     embeddings = self.forward(images)
+    #     print(f"==>> embeddings.shape: {embeddings.shape}")
 
-    def validation_epoch_end(self, outputs):
-        """_summary_
+    #     # self.val_embeddings_list.extend(embeddings)
+    #     # self.val_lables_list.extend(gt_labels)
 
-        Args:
-            outputs (_type_): _description_
-        """
-        save_folder = os.path.join(
-            "./work_dirs",
-            str(Configs.expr_index) + "_lr_" + str(Configs.lr),
-        )
-        os.makedirs(save_folder, exist_ok=True)
+    #     return embeddings
 
-        fig, _ = plt.subplots(figsize=(11.7, 8.27))
-        with torch.no_grad():
-            # X_code = self.model.code_space.detach().cpu().numpy()
+    # def validation_epoch_end(self, outputs):
+    #     """_summary_
 
-            X_code = torch.stack(self.val_embeddings_list).cpu().numpy()
-            print(f"==>> X_code.shape: {X_code.shape}")
-            labels = torch.stack(self.val_lables_list).cpu().numpy()
-            print(f"==>> labels.shape: {labels.shape}")
-            plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
-            plt.savefig(
-                os.path.join(save_folder, "figure_" + str(self.current_epoch) + ".png")
-            )
-            plt.close(fig)
+    #     Args:
+    #         outputs (_type_): _description_
+    #     """
+    #     gathered_outputs = self.all_gather(outputs)
+    #     print(f"==>> gathered_outputs.shape: {gathered_outputs.shape}")
+    #     # processed_outputs = self.process_gathered_outputs(gathered_outputs)
+    #     # print(f"==>> processed_outputs.shape: {processed_outputs.shape}")
+
+    #     import sys
+
+    #     sys.exit()
+
+    #     save_folder = os.path.join(
+    #         "./work_dirs",
+    #         str(Configs.expr_index) + "_lr_" + str(Configs.lr),
+    #     )
+    #     os.makedirs(save_folder, exist_ok=True)
+
+    #     fig, _ = plt.subplots(figsize=(11.7, 8.27))
+    #     with torch.no_grad():
+    #         # X_code = self.model.code_space.detach().cpu().numpy()
+
+    #         # X_code = torch.stack(self.val_embeddings_list).cpu().numpy()
+    #         X_code = gathered_outputs.cpu().numpy()
+    #         print(f"==>> X_code.shape: {X_code.shape}")
+    #         labels = torch.stack(self.val_lables_list).cpu().numpy()
+    #         print(f"==>> labels.shape: {labels.shape}")
+    #         plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
+    #         plt.savefig(
+    #             os.path.join(save_folder, "figure_" + str(self.current_epoch) + ".png")
+    #         )
+    #         plt.close(fig)
+
+    # def all_gather(self, outputs):
+    #     gathered_outputs = [torch.zeros_like(output) for output in outputs]
+    #     gathered_outputs = [
+    #         output.cuda(device=self.trainer.strategy.root_device.index)
+    #         for output in gathered_outputs
+    #     ]
+
+    #     torch.distributed.all_gather(gathered_outputs, outputs)
+
+    #     gathered_outputs = [output.cpu() for output in gathered_outputs]
+    #     gathered_outputs = torch.cat(gathered_outputs, dim=0)
+
+    #     return gathered_outputs
+
+    # def all_gather(self, outputs):
+    #     gathered_outputs = [list(output) for output in zip(*outputs)]
+    #     gathered_outputs = [torch.stack(output) for output in gathered_outputs]
+    #     gathered_outputs = [
+    #         output.cuda(device=self.trainer.root_gpu) for output in gathered_outputs
+    #     ]
+
+    #     torch.distributed.all_gather(gathered_outputs, gathered_outputs)
+
+    #     gathered_outputs = [output.cpu() for output in gathered_outputs]
+
+    #     return gathered_outputs
+
+    # def process_gathered_outputs(self, gathered_outputs):
+    #     processed_outputs = []
+    #     for output in gathered_outputs:
+    #         output = torch.cat(output, dim=0)
+    #         processed_outputs.append(output)
+
+    #     return processed_outputs
