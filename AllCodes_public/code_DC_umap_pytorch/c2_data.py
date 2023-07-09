@@ -589,8 +589,8 @@ class Data:
             print(f"==>> out_embeddings.shape: {out_embeddings.shape}")
             print(f"==>> out_labels.shape: {out_labels.shape}")
 
-            images_torch = torch.tensor(out_embeddings)
-            labels_torch = torch.tensor(out_labels)
+            images_torch = out_embeddings.clone().detach().cpu()
+            labels_torch = out_labels.clone().detach().cpu()
 
             images_all = []
             labels_all = []
@@ -608,7 +608,7 @@ class Data:
                 metric=Configs.umap_metric,
                 random_state=Configs.umap_random_state,
             )
-            umap_edge_dataset = UMAPDataset(images_all_torch, graph, n_epochs=10)
+            umap_edge_dataset = UMAPDataset(images_all_torch, graph, n_epochs=200)
 
             # sampling_pool = np.arange(len(umap_edge_dataset))
             # np.random.shuffle(sampling_pool)

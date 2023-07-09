@@ -13,7 +13,7 @@ class DataUtils:
         pass
 
     @staticmethod
-    def classification_augmentation_A():
+    def classification_train_augmentation_A():
         transform = A.Compose(
             [
                 A.Resize(height=256, width=256),
@@ -27,8 +27,20 @@ class DataUtils:
                 A.RandomResizedCrop(
                     height=224, width=224, scale=(0.8, 1.0), ratio=(0.9, 1.1)
                 ),
-                A.Normalize(),
+                A.Normalize(mean=Configs.mean, std=Configs.std),
                 ToTensorV2(),
+            ]
+        )
+        return transform
+
+    @staticmethod
+    def classification_val_augmentation_A():
+        transform = A.Compose(
+            [
+                A.Resize(256, 256),  # Resize the image to 256x256
+                A.CenterCrop(224, 224),  # Center crop the image to 224x224
+                A.Normalize(mean=Configs.mean, std=Configs.std),
+                ToTensorV2(),  # Convert the image to PyTorch tensor
             ]
         )
         return transform
@@ -122,7 +134,10 @@ class Data:
             use_training = False
             use_shuffle = False
 
-        transform = DataUtils.classification_augmentation_A()
+        if data_category == "train":
+            transform = DataUtils.classification_train_augmentation_A()
+        else:
+            transform = DataUtils.classification_val_augmentation_A()
 
         dataset = AugmentedCIFAR10(
             root=data_dir,

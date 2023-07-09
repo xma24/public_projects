@@ -46,9 +46,9 @@ class Configs:
 
     ### Net Config:
     backbone_name = "vit"
-    lr = 0.08
+    lr = 0.008
     opt = "SGD"
-    backbone_lr = 0.01
+    backbone_lr = 0.001
 
     ### Training Config:
     subtrain = False
@@ -89,13 +89,15 @@ class Configs:
     eta_min = 1e-6  # for cosineAnn
     T_0 = 5  # for cosineAnnWarm; cosineAnnWarmDecay
     T_mult = 19  # for cosineAnnWarm; cosineAnnWarmDecay
-    max_epochs = T_0 + T_mult * T_0
+    # max_epochs = T_0 + T_mult * T_0
+    max_epochs = 1
 
     ### Validation Config:
     subval = False
     subval_ratio = 0.1
     val_interval = 1
     val_batch_size = 16
+    val_interval_batches = 200
 
     """ +++ umap settings."""
     umap_n_components = 2

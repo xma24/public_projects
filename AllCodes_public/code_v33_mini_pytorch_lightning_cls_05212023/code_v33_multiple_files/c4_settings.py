@@ -157,7 +157,9 @@ class Settings(object):
                         Settings.checkpoint_setting(),
                     ],
                     log_every_n_steps=1,
-                    max_epochs=Configs.max_epochs,
+                    max_epochs=Configs.pretrained_weights_max_epoch
+                    if Configs.pretrained_weights
+                    else Configs.max_epochs,
                     check_val_every_n_epoch=Configs.val_interval,
                     auto_scale_batch_size="binsearch",
                     # resume_from_checkpoint="",

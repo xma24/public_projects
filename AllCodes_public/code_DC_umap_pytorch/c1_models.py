@@ -5,15 +5,16 @@ import numpy as np
 import pytorch_lightning as pl
 import timm
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torchmetrics
+from c3_utils import Utils
 from c5_configs import Configs
 from sklearn.neighbors import KDTree
 from sklearn.utils import check_random_state
 from torch import nn
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 from umap.spectral import spectral_layout
-from c3_utils import Utils
 
 
 class ModelUtils(pl.LightningModule):
@@ -455,6 +456,71 @@ class ModelUtils(pl.LightningModule):
 
         return init_model, backbone, init_classifier, classifier
 
+    @staticmethod
+    def load_pretrained_weights(model):
+        checkpoint = torch.load(Configs.pretrained_weights)
+        state_dict = checkpoint["state_dict"]
+        modified_state_dict = {}
+        for key, value in state_dict.items():
+            modified_key = key[len("model.") :]
+            modified_state_dict[modified_key] = value
+        ret_loading = model.load_state_dict(modified_state_dict, strict=True)
+        print(f"\n ==>> ret_loading: {ret_loading} \n")
+
+        return model
+
+    @staticmethod
+    def get_resnet50(num_classes):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
+        import torchvision.models as models
+
+        init_model = models.resnet50(pretrained=False)
+        # encoder = nn.Sequential(*list(backbone.children())[:-1])
+
+        # # Projection MLP
+        # self.projection = nn.Sequential(
+        #     nn.Linear(2048, 2048), nn.ReLU(inplace=True), nn.Linear(2048, dim)
+        # )
+
+        backbone = nn.Sequential()
+        init_classifier = nn.Sequential()
+        named_modules_list = list(init_model.named_children())
+        print(f"==>> named_modules_list: {named_modules_list}")
+        for i, (name, module) in enumerate(init_model.named_children()):
+            if i >= len(named_modules_list) - 1:
+                init_classifier.add_module(name, module)
+                # break
+            else:
+                backbone.add_module(name, module)
+        print(f"==>> backbone: {backbone}")
+
+        if num_classes == 1000:
+            classifier = init_classifier
+        else:
+            # nn.Linear(2048, 2048), nn.ReLU(inplace=True), nn.Linear(2048, dim)
+            classifier = nn.Linear(2048, num_classes)
+        print(f"==>> classifier: {classifier}")
+
+        weights_path = "/home/xma24/vscode/public_projects/public_projects/AllCodes_public/data/moco_v1_200ep_pretrain.pth.tar"
+        checkpoint = torch.load(weights_path)
+        # print(f"==>> checkpoint: {checkpoint.keys()}")
+        state_dict = checkpoint["state_dict"]
+        # print(f"==>> state_dict: {state_dict.keys()}")
+
+        modified_state_dict = {}
+        for key, value in state_dict.items():
+            modified_key = key[len("module.encoder_q.") :]
+            if not modified_key.startswith("fc"):
+                modified_state_dict[modified_key] = value
+        ret_loading = backbone.load_state_dict(modified_state_dict, strict=True)
+        print(f"\n==>> ret_loading: {ret_loading}\n")
+
+        return init_model, backbone, init_classifier, classifier
+
     # @staticmethod
     # def get_mlp(num_classes):
     #     """_summary_
@@ -697,6 +763,15 @@ class ModelUtils(pl.LightningModule):
         return sampled_edges_to, sampled_edges_from
 
 
+class SqueezeModule(nn.Module):
+    def __init__(self, dim=None):
+        super(SqueezeModule, self).__init__()
+        # self.dim = dim
+
+    def forward(self, x):
+        return torch.squeeze(x)
+
+
 class Models(ModelUtils):
     """_summary_
 
@@ -712,17 +787,21 @@ class Models(ModelUtils):
         self.val_embeddings_dict = []
         self.val_lables_list = []
 
-        """ +++ use resnet18."""
         (
             init_model,
             backbone,
             init_classifier,
             classifier,
-        ) = ModelUtils.get_resnet18_timm(num_classes=Configs.umap_n_components)
+        ) = ModelUtils.get_resnet50(num_classes=Configs.umap_n_components)
+
+        nn_squeeze = SqueezeModule()
 
         self.model = nn.Sequential()
         self.model.add_module("backbone", backbone)
+        self.model.add_module("nn_squeeze", nn_squeeze)
         self.model.add_module("classifier", classifier)
+
+        self.count = 0
 
         """ +++ use mlp."""
         # self.model = ModelUtils.get_mlp(num_classes=Configs.umap_n_components)
@@ -741,8 +820,10 @@ class Models(ModelUtils):
         Returns:
             _type_: _description_
         """
-        embeddings = self.model(images)
-        return embeddings
+        output = self.model(images)
+        print(f"==>> output.shape: {output.shape}")
+
+        return output
 
     def training_step(self, batch, batch_idx):
         """_summary_
@@ -800,6 +881,8 @@ class Models(ModelUtils):
 
         losses = {"loss": train_loss}
 
+        self.count += 1
+
         self.log(
             "val_loss",
             train_loss,
@@ -847,95 +930,59 @@ class Models(ModelUtils):
 
         return {"loss": losses["loss"]}
 
-    # def validation_step(self, batch, batch_idx):
-    #     """_summary_
+    def gather_across_gpus(self, data):
+        gathered_data = [torch.zeros_like(data) for _ in range(dist.get_world_size())]
+        dist.all_gather(gathered_data, data)
+        merged_data = torch.cat(gathered_data, dim=0)
+        print(f"==>> merged_data.shape: {merged_data.shape}")
+        return merged_data
 
-    #     Args:
-    #         batch (_type_): _description_
-    #         batch_idx (_type_): _description_
-    #     """
-    #     # if batch_idx == 0:
-    #     #     self.val_embeddings_list = []
-    #     #     self.val_lables_list = []
-    #     images, labels = batch
-    #     print(f"==>> batch_idx: {batch_idx}, images: {images.shape}")
+    def validation_step(self, batch, batch_idx):
+        """_summary_
 
-    #     # embeddings_dino = self.model_dino(images)
-    #     embeddings = self.forward(images)
-    #     print(f"==>> embeddings.shape: {embeddings.shape}")
+        Args:
+            batch (_type_): _description_
+            batch_idx (_type_): _description_
+        """
+        images, labels = batch
+        model_outputs = self.forward(images)
 
-    #     # self.val_embeddings_list.extend(embeddings)
-    #     # self.val_lables_list.extend(gt_labels)
+        merged_outputs = self.gather_across_gpus(model_outputs)
+        merged_labels = self.gather_across_gpus(labels)
 
-    #     return embeddings
+        # self.val_embeddings_list.extend(embeddings)
+        # self.val_lables_list.extend(gt_labels)
 
-    # def validation_epoch_end(self, outputs):
-    #     """_summary_
+        return merged_outputs, merged_labels
 
-    #     Args:
-    #         outputs (_type_): _description_
-    #     """
-    #     gathered_outputs = self.all_gather(outputs)
-    #     print(f"==>> gathered_outputs.shape: {gathered_outputs.shape}")
-    #     # processed_outputs = self.process_gathered_outputs(gathered_outputs)
-    #     # print(f"==>> processed_outputs.shape: {processed_outputs.shape}")
+    def validation_epoch_end(self, outputs):
+        """_summary_
 
-    #     import sys
+        Args:
+            outputs (_type_): _description_
+        """
 
-    #     sys.exit()
+        # if self.device == "cuda:0":
+        print(f"==>> self.device: {self.device}")
+        embeddings, labels = zip(*outputs)
+        output_epoch = torch.cat(embeddings, dim=0)
+        print(f"==>> output_epoch.shape: {output_epoch.shape}")
 
-    #     save_folder = os.path.join(
-    #         "./work_dirs",
-    #         str(Configs.expr_index) + "_lr_" + str(Configs.lr),
-    #     )
-    #     os.makedirs(save_folder, exist_ok=True)
+        labels_epoch = torch.cat(labels, dim=0)
+        print(f"==>> labels_epoch.shape: {labels_epoch.shape}")
 
-    #     fig, _ = plt.subplots(figsize=(11.7, 8.27))
-    #     with torch.no_grad():
-    #         # X_code = self.model.code_space.detach().cpu().numpy()
+        save_folder = os.path.join(
+            "./work_dirs",
+            str(Configs.expr_index) + "_lr_" + str(Configs.lr),
+        )
+        os.makedirs(save_folder, exist_ok=True)
 
-    #         # X_code = torch.stack(self.val_embeddings_list).cpu().numpy()
-    #         X_code = gathered_outputs.cpu().numpy()
-    #         print(f"==>> X_code.shape: {X_code.shape}")
-    #         labels = torch.stack(self.val_lables_list).cpu().numpy()
-    #         print(f"==>> labels.shape: {labels.shape}")
-    #         plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
-    #         plt.savefig(
-    #             os.path.join(save_folder, "figure_" + str(self.current_epoch) + ".png")
-    #         )
-    #         plt.close(fig)
-
-    # def all_gather(self, outputs):
-    #     gathered_outputs = [torch.zeros_like(output) for output in outputs]
-    #     gathered_outputs = [
-    #         output.cuda(device=self.trainer.strategy.root_device.index)
-    #         for output in gathered_outputs
-    #     ]
-
-    #     torch.distributed.all_gather(gathered_outputs, outputs)
-
-    #     gathered_outputs = [output.cpu() for output in gathered_outputs]
-    #     gathered_outputs = torch.cat(gathered_outputs, dim=0)
-
-    #     return gathered_outputs
-
-    # def all_gather(self, outputs):
-    #     gathered_outputs = [list(output) for output in zip(*outputs)]
-    #     gathered_outputs = [torch.stack(output) for output in gathered_outputs]
-    #     gathered_outputs = [
-    #         output.cuda(device=self.trainer.root_gpu) for output in gathered_outputs
-    #     ]
-
-    #     torch.distributed.all_gather(gathered_outputs, gathered_outputs)
-
-    #     gathered_outputs = [output.cpu() for output in gathered_outputs]
-
-    #     return gathered_outputs
-
-    # def process_gathered_outputs(self, gathered_outputs):
-    #     processed_outputs = []
-    #     for output in gathered_outputs:
-    #         output = torch.cat(output, dim=0)
-    #         processed_outputs.append(output)
-
-    #     return processed_outputs
+        fig, _ = plt.subplots(figsize=(11.7, 8.27))
+        with torch.no_grad():
+            X_code = output_epoch.cpu().numpy()
+            print(f"==>> X_code.shape: {X_code.shape}")
+            labels = labels_epoch.cpu().numpy()
+            print(f"==>> labels.shape: {labels.shape}")
+            plt.scatter(X_code[:, 0], X_code[:, 1], c=labels, s=5, cmap="tab10")
+            plt.savefig(os.path.join(save_folder, "figure_" + str(self.count) + ".png"))
+            plt.close(fig)

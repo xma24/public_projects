@@ -3,6 +3,7 @@ import os
 import pytorch_lightning as pl
 import timm
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from c3_utils import Utils
 from c5_configs import Configs
@@ -16,7 +17,7 @@ class ModelUtils:
 
         keyworlds = "efficientnet"
         selected_listed_models = ModelUtils.get_timm_model_list(keyworlds)
-        print(f"==>> selected_listed_models: {selected_listed_models}")
+        # print(f"==>> selected_listed_models: {selected_listed_models}")
 
         model_name = "efficientnet_b0.ra_in1k"
         init_model = timm.create_model(model_name, pretrained=False)
@@ -41,15 +42,15 @@ class ModelUtils:
     def get_timm_model_list(keyworlds):
         listed_models = timm.list_models("*")
         # print("==>> listed_models: ", listed_models)
-        print("==>> listed_models len: ", len(listed_models))
+        # print("==>> listed_models len: ", len(listed_models))
 
         listed_pretraiend_models = timm.list_models(pretrained=True)
         # print("==>> listed_pretraiend_models: ", listed_pretraiend_models)
-        print("==>> listed_pretraiend_models len: ", len(listed_pretraiend_models))
+        # print("==>> listed_pretraiend_models len: ", len(listed_pretraiend_models))
 
         selected_listed_models = timm.list_models("*" + keyworlds + "*")
-        print("==>> selected_listed_models: ", selected_listed_models)
-        print("==>> selected_listed_models len: ", len(selected_listed_models))
+        # print("==>> selected_listed_models: ", selected_listed_models)
+        # print("==>> selected_listed_models len: ", len(selected_listed_models))
 
         return selected_listed_models
 
@@ -110,6 +111,19 @@ class ModelUtils:
         top5_prob, top5_catid = torch.topk(probabilities, 5)
         for i in range(top5_prob.size(0)):
             print(categories[top5_catid[i]], top5_prob[i].item())
+
+    @staticmethod
+    def load_pretrained_weights(model):
+        checkpoint = torch.load(Configs.pretrained_weights)
+        state_dict = checkpoint["state_dict"]
+        modified_state_dict = {}
+        for key, value in state_dict.items():
+            modified_key = key[len("model.") :]
+            modified_state_dict[modified_key] = value
+        ret_loading = model.load_state_dict(modified_state_dict, strict=True)
+        print(f"\n ==>> ret_loading: {ret_loading} \n")
+
+        return model
 
 
 class PytorchLightningDefault(pl.LightningModule):
@@ -407,6 +421,10 @@ class Models(PytorchLightningDefault):
         self.model.add_module("classifier", classifier)
         # model = model.to(Configs.device)
 
+
+        if Configs.pretrained_weights:
+            ModelUtils.load_pretrained_weights(self.model)
+
         self.loss = nn.CrossEntropyLoss()
 
     def forward(self, images, labels=None, epoch=None, batch_idx=None):
@@ -420,6 +438,7 @@ class Models(PytorchLightningDefault):
         images, gt_labels = batch
 
         model_outputs = self.forward(images)
+
         train_loss = self.loss(model_outputs, gt_labels)
 
         # train_loss = train_losses_dict["loss"]
@@ -475,6 +494,15 @@ class Models(PytorchLightningDefault):
         images, gt_labels = batch
 
         model_outputs = self.forward(images)
+        print(f"==>> model_outputs.shape: {model_outputs.shape}")
+
+        gathered_outputs = [
+            torch.zeros_like(model_outputs) for _ in range(dist.get_world_size())
+        ]
+        dist.all_gather(gathered_outputs, model_outputs)
+        merged_outputs = torch.cat(gathered_outputs, dim=0)
+        print(f"==>> merged_outputs.shape: {merged_outputs.shape}")
+
         val_loss = self.loss(model_outputs, gt_labels)
         # val_loss = val_losses_dict["loss"]
 

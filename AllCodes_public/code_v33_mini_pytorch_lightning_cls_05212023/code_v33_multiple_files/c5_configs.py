@@ -23,15 +23,17 @@ class Configs:
 
     """ +++ data configs."""
     num_classes = 10
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
     classes = None
     if classes is None:
         classes = np.arange(num_classes)
 
     """ +++ model configs"""
     backbone_name = "efficientnet"
-    pretrained_weights = None
-    pretrained_weights_max_epoch = 40
-    pre_lr = 0.01
+    pretrained_weights = "/home/xma24/vscode/public_projects/public_projects/AllCodes_public/code_v33_mini_pytorch_lightning_cls_05212023/code_v33_multiple_files/pt-cifar10-efficientnet/2et5p6oe/checkpoints/epoch=48-val_loss=0.40-user_metric=0.87.ckpt"
+    pretrained_weights_max_epoch = 1
+    pre_lr = 0.00001
 
     """ +++ training configs."""
     training_mode = True
